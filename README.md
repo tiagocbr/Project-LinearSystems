@@ -1,6 +1,7 @@
 # Project-LinearSystems
 
-Projeto para analisar a deformação de uma viga sujeita a uma carga distribuída W e uma tração T
+Projeto para analisar a deformação de uma viga sujeita a uma carga distribuída W e uma tração T.
+
 Os objetivos do projeto são:
 1. Implementar rotinas para soluçãoao eficiente de sistemas triangulares (superior e inferior) com matrizes banda;
 2. Utilizar essas rotinas em conjunto com a rotina fornecida para cálculo da fatoração
