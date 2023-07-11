@@ -1,0 +1,197 @@
+def modelo ( n, w, T, L = 1.2e2 , E = 2.9e7 , I = 1.21e2 ):
+    """
+    Constroi a matriz e o vetor resultado de um sistema linear.
+
+    Parâmetros:
+        - n: fator de discretização.
+        - w: carga aplicada na viga.
+        - T: tração.
+
+    Retorna:
+        - A: Matriz do sistema linear.
+        - f: Vetor com o resultado das equações do sistema linear.
+    """
+    a = T / ( E * I )
+    b = w / ( 2 * E * I )
+    h = L / ( n - 1 )
+
+    A = np.zeros( ( n - 2, n - 2 ) )
+    v = -( h**2 * a + 2 )
+
+    A[ range( 0, n - 3 ), range( 1, n - 2 ) ] = 1.0
+    A[ range( 0, n - 2 ), range( 0, n - 2 ) ] = v
+    A[ range( 1, n - 2 ), range( 0, n - 3 ) ] = 1.0
+
+    X = np.linspace( h, ( n - 2 ) * h, n - 2 )
+
+    bh_3 = b * ( h ** 3 )
+    f = np.linspace( bh_3 , ( n - 2 ) * bh_3 , n - 2 ) * ( L - X )
+    return ( A, f )
+
+# Funções que não se aproveitam da estrutura por bandas
+def LU(A):
+    """
+    Realiza a fatoração LU de uma matriz A.
+
+    Parâmetros:
+        - A: Matriz de entrada (numpy.array).
+
+    Retorna:
+        - L: Matriz triangular inferior resultante da fatoração LU.
+        - U: Matriz triangular superior resultante da fatoração LU.
+    """
+    n = len(A)
+    L = np.eye(n)  # Matriz identidade inicial para L
+    U = np.copy(A)  # Cópia de A para U
+
+    for k in range(n-1):
+        for i in range(k+1, n):
+            # Cálculo do multiplicador
+            L[i, k] = U[i, k] / U[k, k]
+
+            # Atualização da matriz U
+            U[i, k:] -= L[i, k] * U[k, k:]
+
+    return ( L, U )
+
+def solve_lower_triangular(L, b):
+    """
+    Resolve um sistema linear com uma matriz triangular inferior.
+
+    Parâmetros:
+        - L: Matriz triangular inferior (numpy.array).
+        - b: Vetor de soluções (numpy.array).
+
+    Retorna:
+        - x: Vetor solução do sistema linear.
+    """
+    n = len(b)
+    x = np.zeros(n)
+
+    for i in range(n):
+        x[i] = (b[i] - np.dot(L[i, :i], x[:i])) / L[i, i]
+
+    return ( x )
+
+
+def solve_upper_triangular(U, b):
+    """
+    Resolve um sistema linear com uma matriz triangular superior.
+
+    Parâmetros:
+        - U: Matriz triangular superior (numpy.array).
+        - b: Vetor de soluções (numpy.array).
+
+    Retorna:
+        - x: Vetor solução do sistema linear.
+    """
+    n = len(b)
+    x = np.zeros(n)
+
+    for i in range(n-1, -1, -1):
+        x[i] = (b[i] - np.dot(U[i, i+1:], x[i+1:])) / U[i, i]
+
+    return ( x )
+
+def resol_base_tri (A, b):
+    """
+    Resolve um sistema de equações lineares triangular superior com matriz banda usando fatoração PA=LU.
+
+    Parâmetros:
+        A: Matriz de coeficientes do sistema (matriz banda superior)
+        b: Vetor de termos independentes
+
+    Retorna:
+        x: Solução do sistema
+    """
+    n = len(b)
+
+    L, U = LU(A)
+    y = solve_lower_triangular(L, b)
+    x = solve_upper_triangular(U, y)
+
+    return ( x )
+
+# Funções que se aproveitam da estrutura por bandas
+def LU_banda ( A, p, n):
+    """
+    Realiza a fatoração LU por bandas de uma matriz A.
+
+    Parâmetros:
+        - A: Matriz de entrada (numpy.array).
+
+    Retorna:
+        - L: Matriz triangular inferior resultante da fatoração LU.
+        - U: Matriz triangular superior resultante da fatoração LU.
+    """
+    U = np.array(A)
+    L = np.eye( n )
+    for j in range( n - 1 ):
+        v = min( n, j + p + 1 )
+        for i in range( j + 1, v ):
+            L[ i, j ] = U[ i, j ] / U[ j, j ]
+            U[ i, j : v ] = U[ i, j : v ] - L[ i, j ] * U[ j, j : v ]
+    return ( L, U )
+
+def solve_lower_band(L, b, n):
+    """
+    Resolve um sistema de equações lineares triangular inferior com matriz banda.
+
+    Parâmetros:
+        L: Matriz de coeficientes do sistema (matriz banda inferior)
+        b: Vetor de termos independentes
+        n: Discretização
+
+    Retorna:
+        x: Solução do sistema
+    """
+    y = [0] * (n - 2)
+
+    for i in range (n - 2):
+        if i != 0:
+            y[i] = (b[i] - L[i, i - 1] * y[i - 1]) / L[i, i]
+        else:
+            y[i] = b[i] / L[i, i]
+
+    return ( y )
+
+def solve_upper_band(U, y, n):
+    """
+    Resolve um sistema de equações lineares triangular superior com matriz banda.
+
+    Parâmetros:
+        U: Matriz de coeficientes do sistema (matriz banda superior)
+        y: Vetor de termos independentes
+        n: Discretização
+
+    Retorna:
+        x: Solução do sistema
+    """
+    x = [0] * (n - 2)
+
+    for i in range (n - 3, -1, -1):
+        if i != n - 3:
+            x[i] = (y[i] - U[i, i + 1] * x[i + 1]) / U[i, i]
+        else:
+            x[i] = (y[i]) / U[i, i]
+
+    return ( x )
+
+def resol_base_band (A, b, n, p):
+    """
+    Resolve um sistema de equações lineares triangular superior com matriz banda usando fatoração PA=LU.
+
+    Parâmetros:
+        A: Matriz de coeficientes do sistema (matriz banda superior)
+        b: Vetor de termos independentes
+        n: Discretização
+        p: largura de banda
+
+    Retorna:
+        x: Solução do sistema
+    """
+    L, U = LU_banda(A, p, n-2)
+    y = solve_lower_band(L, b, n)
+    x = solve_upper_band(U, y, n)
+
+    return ( x )
